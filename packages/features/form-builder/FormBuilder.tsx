@@ -15,7 +15,6 @@ import { Badge } from "@calcom/ui/components/badge";
 import { Button } from "@calcom/ui/components/button";
 import { DialogContent, DialogFooter, DialogHeader, DialogClose } from "@calcom/ui/components/dialog";
 import { Editor } from "@calcom/ui/components/editor";
-import { ToggleGroup } from "@calcom/ui/components/form";
 import {
   Switch,
   CheckboxField,
@@ -47,309 +46,31 @@ function getCurrentFieldType(fieldForm: UseFormReturn<RhfFormField>) {
   return fieldTypesConfigMap[fieldForm.watch("type") || "text"];
 }
 
-/**
- * It works with a react-hook-form only.
- * `formProp` specifies the name of the property in the react-hook-form that has the fields. This is where fields would be updated.
- */
-export const FormBuilder = function FormBuilder({
-  title,
-  description,
-  addFieldLabel,
-  formProp,
-  disabled,
-  LockedIcon,
-  dataStore,
-  shouldConsiderRequired,
-  showPhoneAndEmailToggle = false,
-}: {
-  formProp: string;
-  title: string;
-  description: string;
-  addFieldLabel: string;
-  disabled: boolean;
-  LockedIcon: false | JSX.Element;
-  showPhoneAndEmailToggle?: boolean;
-  /**
-   * A readonly dataStore that is used to lookup the options for the fields. It works in conjunction with the field.getOptionAt property which acts as the key in options
-   */
-  dataStore: {
-    options: Record<
-      string,
-      {
-        source: { label: string };
-        value: { label: string; value: string; inputPlaceholder?: string }[];
-      }
-    >;
+type FormFieldDialogProps = {
+  fieldDialog: {
+    isOpen: boolean;
+    fieldIndex: number;
+    data: RhfFormField | null;
   };
-  /**
-   * This is kind of a hack to allow certain fields to be just shown as required when they might not be required in a strict sense
-   * e.g. Location field has a default value at backend so API can send no location but formBuilder in UI doesn't allow it.
-   */
-  shouldConsiderRequired?: (field: RhfFormField) => boolean | undefined;
-}) {
-  // I would have liked to give Form Builder it's own Form but nested Forms aren't something that browsers support.
-  // So, this would reuse the same Form as the parent form.
-  const fieldsForm = useFormContext<RhfForm>();
-  const [parent] = useAutoAnimate<HTMLUListElement>();
+  setFieldDialog: (dialog: { isOpen: boolean; fieldIndex: number; data: RhfFormField | null }) => void;
+
+  fields: RhfFormFields;
+  append: (field: RhfFormField) => void;
+  update: (index: number, data: RhfFormField) => void;
+  shouldConsiderRequired?: (field: RhfFormField) => boolean | undefined; // This is optional and can be used to override the default required behavior
+};
+
+export const FormFieldDialog = ({
+  fieldDialog,
+  setFieldDialog,
+  fields,
+  append,
+  update,
+  shouldConsiderRequired = undefined, // This is optional and can be used to override the default required behavior
+}: FormFieldDialogProps) => {
   const { t } = useLocale();
-
-  const { fields, swap, remove, update, append } = useFieldArray({
-    control: fieldsForm.control,
-    // HACK: It allows any property name to be used for instead of `fields` property name
-    name: formProp as unknown as "fields",
-  });
-
-  const [fieldDialog, setFieldDialog] = useState({
-    isOpen: false,
-    fieldIndex: -1,
-    data: {} as RhfFormField | null,
-  });
-
-  const addField = () => {
-    setFieldDialog({
-      isOpen: true,
-      fieldIndex: -1,
-      data: null,
-    });
-  };
-
-  const editField = (index: number, data: RhfFormField) => {
-    setFieldDialog({
-      isOpen: true,
-      fieldIndex: index,
-      data,
-    });
-  };
-
-  const removeField = (index: number) => {
-    remove(index);
-  };
-
   return (
-    <div>
-      <div>
-        <div className="text-default text-sm font-semibold leading-none ltr:mr-1 rtl:ml-1">
-          {title}
-          {LockedIcon}
-        </div>
-        <div className="flex items-start justify-between">
-          <p className="text-subtle mt-1 max-w-[280px] break-words text-sm sm:max-w-[500px]">{description}</p>
-          {showPhoneAndEmailToggle && (
-            <ToggleGroup
-              value={(() => {
-                const phoneField = fields.find((field) => field.name === "attendeePhoneNumber");
-                const emailField = fields.find((field) => field.name === "email");
-
-                if (phoneField && !phoneField.hidden && phoneField.required && !emailField?.required) {
-                  return "phone";
-                }
-
-                return "email";
-              })()}
-              options={[
-                {
-                  value: "email",
-                  label: "Email",
-                  iconLeft: <Icon name="mail" className="h-4 w-4" />,
-                },
-                {
-                  value: "phone",
-                  label: "Phone",
-                  iconLeft: <Icon name="phone" className="h-4 w-4" />,
-                },
-              ]}
-              onValueChange={(value) => {
-                const phoneFieldIndex = fields.findIndex((field) => field.name === "attendeePhoneNumber");
-                const emailFieldIndex = fields.findIndex((field) => field.name === "email");
-                if (value === "email") {
-                  update(emailFieldIndex, {
-                    ...fields[emailFieldIndex],
-                    hidden: false,
-                    required: true,
-                  });
-                  update(phoneFieldIndex, {
-                    ...fields[phoneFieldIndex],
-                    hidden: true,
-                    required: false,
-                  });
-                } else if (value === "phone") {
-                  update(emailFieldIndex, {
-                    ...fields[emailFieldIndex],
-                    hidden: true,
-                    required: false,
-                  });
-                  update(phoneFieldIndex, {
-                    ...fields[phoneFieldIndex],
-                    hidden: false,
-                    required: true,
-                  });
-                }
-              }}
-            />
-          )}
-        </div>
-        <p className="text-default mt-5 text-sm font-semibold leading-none ltr:mr-1 rtl:ml-1">
-          {t("questions")}
-        </p>
-        <p className="text-subtle mt-1 max-w-[280px] break-words text-sm sm:max-w-[500px]">
-          {t("all_info_your_booker_provide")}
-        </p>
-        <ul ref={parent} className="border-subtle divide-subtle mt-4 divide-y rounded-md border">
-          {fields.map((field, index) => {
-            let options = field.options ?? null;
-            const sources = [...(field.sources || [])];
-            const isRequired = shouldConsiderRequired ? shouldConsiderRequired(field) : field.required;
-            if (!options && field.getOptionsAt) {
-              const {
-                source: { label: sourceLabel },
-                value,
-              } = dataStore.options[field.getOptionsAt as keyof typeof dataStore] ?? [];
-              options = value;
-              options.forEach((option) => {
-                sources.push({
-                  id: option.value,
-                  label: sourceLabel,
-                  type: "system",
-                });
-              });
-            }
-
-            if (fieldsThatSupportLabelAsSafeHtml.includes(field.type)) {
-              field = { ...field, labelAsSafeHtml: markdownToSafeHTMLClient(field.label ?? "") };
-            }
-            const numOptions = options?.length ?? 0;
-            const firstOptionInput =
-              field.optionsInputs?.[options?.[0]?.value as keyof typeof field.optionsInputs];
-            const doesFirstOptionHaveInput = !!firstOptionInput;
-            // If there is only one option and it doesn't have an input required, we don't show the Field for it.
-            // Because booker doesn't see this in UI, there is no point showing it in FormBuilder to configure it.
-            if (field.hideWhenJustOneOption && numOptions <= 1 && !doesFirstOptionHaveInput) {
-              return null;
-            }
-
-            const fieldType = fieldTypesConfigMap[field.type];
-            const isFieldEditableSystemButOptional = field.editable === "system-but-optional";
-            const isFieldEditableSystemButHidden = field.editable === "system-but-hidden";
-            const isFieldEditableSystem = field.editable === "system";
-            const isUserField =
-              !isFieldEditableSystem && !isFieldEditableSystemButOptional && !isFieldEditableSystemButHidden;
-
-            if (!fieldType) {
-              throw new Error(`Invalid field type - ${field.type}`);
-            }
-            const groupedBySourceLabel = sources.reduce((groupBy, source) => {
-              const item = groupBy[source.label] || [];
-              if (source.type === "user" || source.type === "default") {
-                return groupBy;
-              }
-              item.push(source);
-              groupBy[source.label] = item;
-              return groupBy;
-            }, {} as Record<string, NonNullable<(typeof field)["sources"]>>);
-
-            return (
-              <li
-                key={field.name}
-                data-testid={`field-${field.name}`}
-                className="hover:bg-muted group relative flex items-center justify-between p-4 transition">
-                {!disabled && (
-                  <>
-                    {index >= 1 && (
-                      <button
-                        type="button"
-                        className="bg-default text-muted hover:text-emphasis disabled:hover:text-muted border-subtle hover:border-emphasis invisible absolute -left-[12px] -ml-4 -mt-4 mb-4 hidden h-6 w-6 scale-0 items-center justify-center rounded-md border p-1 transition-all hover:shadow disabled:hover:border-inherit disabled:hover:shadow-none group-hover:visible group-hover:scale-100 sm:ml-0 sm:flex"
-                        onClick={() => swap(index, index - 1)}>
-                        <Icon name="arrow-up" className="h-5 w-5" />
-                      </button>
-                    )}
-                    {index < fields.length - 1 && (
-                      <button
-                        type="button"
-                        className="bg-default text-muted hover:border-emphasis border-subtle hover:text-emphasis disabled:hover:text-muted invisible absolute -left-[12px] -ml-4 mt-8 hidden h-6 w-6 scale-0 items-center justify-center rounded-md border p-1 transition-all hover:shadow disabled:hover:border-inherit disabled:hover:shadow-none group-hover:visible group-hover:scale-100 sm:ml-0 sm:flex"
-                        onClick={() => swap(index, index + 1)}>
-                        <Icon name="arrow-down" className="h-5 w-5" />
-                      </button>
-                    )}
-                  </>
-                )}
-
-                <div>
-                  <div className="flex flex-col lg:flex-row lg:items-center">
-                    <div className="text-default text-sm font-semibold ltr:mr-2 rtl:ml-2">
-                      <FieldLabel field={field} />
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {field.hidden ? (
-                        // Hidden field can't be required, so we don't need to show the Optional badge
-                        <Badge variant="grayWithoutHover">{t("hidden")}</Badge>
-                      ) : (
-                        <Badge variant="grayWithoutHover" data-testid={isRequired ? "required" : "optional"}>
-                          {isRequired ? t("required") : t("optional")}
-                        </Badge>
-                      )}
-                      {Object.entries(groupedBySourceLabel).map(([sourceLabel, sources], key) => (
-                        // We don't know how to pluralize `sourceLabel` because it can be anything
-                        <Badge key={key} variant="blue">
-                          {sources.length} {sources.length === 1 ? sourceLabel : `${sourceLabel}s`}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                  <p className="text-subtle max-w-[280px] break-words pt-1 text-sm sm:max-w-[500px]">
-                    {fieldType.label}
-                  </p>
-                </div>
-                {field.editable !== "user-readonly" && !disabled && (
-                  <div className="flex items-center space-x-2">
-                    {!isFieldEditableSystem && !isFieldEditableSystemButHidden && !disabled && (
-                      <Switch
-                        data-testid="toggle-field"
-                        disabled={isFieldEditableSystem}
-                        checked={!field.hidden}
-                        onCheckedChange={(checked) => {
-                          update(index, { ...field, hidden: !checked });
-                        }}
-                        tooltip={t("show_on_booking_page")}
-                      />
-                    )}
-                    {isUserField && (
-                      <Button
-                        data-testid="delete-field-action"
-                        color="destructive"
-                        disabled={!isUserField}
-                        variant="icon"
-                        onClick={() => {
-                          removeField(index);
-                        }}
-                        StartIcon="trash-2"
-                      />
-                    )}
-                    <Button
-                      data-testid="edit-field-action"
-                      color="secondary"
-                      onClick={() => {
-                        editField(index, field);
-                      }}>
-                      {t("edit")}
-                    </Button>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-        {!disabled && (
-          <Button
-            color="minimal"
-            data-testid="add-field"
-            onClick={addField}
-            className="mt-4"
-            StartIcon="plus">
-            {addFieldLabel}
-          </Button>
-        )}
-      </div>
-      {/* Move this Dialog in another component and it would take with it fieldForm */}
+    <>
       {fieldDialog.isOpen && (
         <FieldEditDialog
           dialog={fieldDialog}
@@ -394,6 +115,302 @@ export const FormBuilder = function FormBuilder({
           shouldConsiderRequired={shouldConsiderRequired}
         />
       )}
+    </>
+  );
+};
+
+export type FormFielsListProps = {
+  fields: RhfFormFields;
+  swap: (from: number, to: number) => void;
+  update: (index: number, data: RhfFormField) => void;
+  editField: (index: number, data: RhfFormField) => void;
+  removeField: (index: number) => void;
+  disabled?: boolean;
+  dataStore: {
+    options: Record<
+      string,
+      {
+        source: { label: string };
+        value: { label: string; value: string; inputPlaceholder?: string }[];
+      }
+    >;
+  };
+  shouldConsiderRequired?: (field: RhfFormField) => boolean | undefined;
+};
+
+export const FormFieldList = ({
+  fields,
+  swap,
+  update,
+  editField,
+  removeField,
+  disabled = false,
+  dataStore,
+  shouldConsiderRequired = undefined, // This is optional and can be used to override the default required behavior
+}: FormFielsListProps) => {
+  const [parent] = useAutoAnimate<HTMLUListElement>();
+
+  const { t } = useLocale();
+  return (
+    <ul ref={parent} className="border-subtle divide-subtle mt-4 divide-y rounded-md border">
+      {fields?.map((field, index) => {
+        let options = field.options ?? null;
+        const sources = [...(field.sources || [])];
+        const isRequired = shouldConsiderRequired ? shouldConsiderRequired(field) : field.required;
+        if (!options && field.getOptionsAt) {
+          const {
+            source: { label: sourceLabel },
+            value,
+          } = dataStore.options[field.getOptionsAt as keyof typeof dataStore] ?? [];
+          options = value;
+          options.forEach((option) => {
+            sources.push({
+              id: option.value,
+              label: sourceLabel,
+              type: "system",
+            });
+          });
+        }
+
+        if (fieldsThatSupportLabelAsSafeHtml.includes(field.type)) {
+          field = { ...field, labelAsSafeHtml: markdownToSafeHTMLClient(field.label ?? "") };
+        }
+        const numOptions = options?.length ?? 0;
+        const firstOptionInput =
+          field.optionsInputs?.[options?.[0]?.value as keyof typeof field.optionsInputs];
+        const doesFirstOptionHaveInput = !!firstOptionInput;
+        // If there is only one option and it doesn't have an input required, we don't show the Field for it.
+        // Because booker doesn't see this in UI, there is no point showing it in FormBuilder to configure it.
+        if (field.hideWhenJustOneOption && numOptions <= 1 && !doesFirstOptionHaveInput) {
+          return null;
+        }
+
+        const fieldType = fieldTypesConfigMap[field.type];
+        const isFieldEditableSystemButOptional = field.editable === "system-but-optional";
+        const isFieldEditableSystemButHidden = field.editable === "system-but-hidden";
+        const isFieldEditableSystem = field.editable === "system";
+        const isUserField =
+          !isFieldEditableSystem && !isFieldEditableSystemButOptional && !isFieldEditableSystemButHidden;
+
+        if (!fieldType) {
+          throw new Error(`Invalid field type - ${field.type}`);
+        }
+        const groupedBySourceLabel = sources.reduce((groupBy, source) => {
+          const item = groupBy[source.label] || [];
+          if (source.type === "user" || source.type === "default") {
+            return groupBy;
+          }
+          item.push(source);
+          groupBy[source.label] = item;
+          return groupBy;
+        }, {} as Record<string, NonNullable<(typeof field)["sources"]>>);
+
+        return (
+          <li
+            key={field.name}
+            data-testid={`field-${field.name}`}
+            className="hover:bg-muted group relative flex items-center justify-between p-4 transition">
+            {!disabled && (
+              <>
+                {index >= 1 && (
+                  <button
+                    type="button"
+                    className="bg-default text-muted hover:text-emphasis disabled:hover:text-muted border-subtle hover:border-emphasis invisible absolute -left-[12px] -ml-4 -mt-4 mb-4 hidden h-6 w-6 scale-0 items-center justify-center rounded-md border p-1 transition-all hover:shadow disabled:hover:border-inherit disabled:hover:shadow-none group-hover:visible group-hover:scale-100 sm:ml-0 sm:flex"
+                    onClick={() => swap(index, index - 1)}>
+                    <Icon name="arrow-up" className="h-5 w-5" />
+                  </button>
+                )}
+                {index < fields.length - 1 && (
+                  <button
+                    type="button"
+                    className="bg-default text-muted hover:border-emphasis border-subtle hover:text-emphasis disabled:hover:text-muted invisible absolute -left-[12px] -ml-4 mt-8 hidden h-6 w-6 scale-0 items-center justify-center rounded-md border p-1 transition-all hover:shadow disabled:hover:border-inherit disabled:hover:shadow-none group-hover:visible group-hover:scale-100 sm:ml-0 sm:flex"
+                    onClick={() => swap(index, index + 1)}>
+                    <Icon name="arrow-down" className="h-5 w-5" />
+                  </button>
+                )}
+              </>
+            )}
+
+            <div>
+              <div className="flex flex-col lg:flex-row lg:items-center">
+                <div className="text-default text-sm font-semibold ltr:mr-2 rtl:ml-2">
+                  <FieldLabel field={field} />
+                </div>
+                <div className="flex items-center space-x-2">
+                  {field.hidden ? (
+                    // Hidden field can't be required, so we don't need to show the Optional badge
+                    <Badge variant="grayWithoutHover">{t("hidden")}</Badge>
+                  ) : (
+                    <Badge variant="grayWithoutHover" data-testid={isRequired ? "required" : "optional"}>
+                      {isRequired ? t("required") : t("optional")}
+                    </Badge>
+                  )}
+                  {Object.entries(groupedBySourceLabel).map(([sourceLabel, sources], key) => (
+                    // We don't know how to pluralize `sourceLabel` because it can be anything
+                    <Badge key={key} variant="blue">
+                      {sources.length} {sources.length === 1 ? sourceLabel : `${sourceLabel}s`}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              <p className="text-subtle max-w-[280px] break-words pt-1 text-sm sm:max-w-[500px]">
+                {fieldType.label}
+              </p>
+            </div>
+            {field.editable !== "user-readonly" && !disabled && (
+              <div className="flex items-center space-x-2">
+                {!isFieldEditableSystem && !isFieldEditableSystemButHidden && !disabled && (
+                  <Switch
+                    data-testid="toggle-field"
+                    disabled={isFieldEditableSystem}
+                    checked={!field.hidden}
+                    onCheckedChange={(checked) => {
+                      update(index, { ...field, hidden: !checked });
+                    }}
+                    tooltip={t("show_on_booking_page")}
+                  />
+                )}
+                {isUserField && (
+                  <Button
+                    data-testid="delete-field-action"
+                    color="destructive"
+                    disabled={!isUserField}
+                    variant="icon"
+                    onClick={() => {
+                      removeField(index);
+                    }}
+                    StartIcon="trash-2"
+                  />
+                )}
+                <Button
+                  data-testid="edit-field-action"
+                  color="secondary"
+                  onClick={() => {
+                    editField(index, field);
+                  }}>
+                  {t("edit")}
+                </Button>
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
+
+/**
+ * It works with a react-hook-form only.
+ * `formProp` specifies the name of the property in the react-hook-form that has the fields. This is where fields would be updated.
+ */
+export const FormBuilder = function FormBuilder({
+  title,
+  description,
+  addFieldLabel,
+  formProp,
+  disabled,
+  LockedIcon,
+  dataStore,
+  shouldConsiderRequired,
+}: {
+  formProp: string;
+  title: string;
+  description: string;
+  addFieldLabel: string;
+  disabled: boolean;
+  LockedIcon: false | JSX.Element;
+  /**
+   * A readonly dataStore that is used to lookup the options for the fields. It works in conjunction with the field.getOptionAt property which acts as the key in options
+   */
+  dataStore: {
+    options: Record<
+      string,
+      {
+        source: { label: string };
+        value: { label: string; value: string; inputPlaceholder?: string }[];
+      }
+    >;
+  };
+  /**
+   * This is kind of a hack to allow certain fields to be just shown as required when they might not be required in a strict sense
+   * e.g. Location field has a default value at backend so API can send no location but formBuilder in UI doesn't allow it.
+   */
+  shouldConsiderRequired?: (field: RhfFormField) => boolean | undefined;
+}) {
+  // I would have liked to give Form Builder it's own Form but nested Forms aren't something that browsers support.
+  // So, this would reuse the same Form as the parent form.
+  const fieldsForm = useFormContext<RhfForm>();
+  const { t } = useLocale();
+
+  const { fields, swap, remove, update, append } = useFieldArray({
+    control: fieldsForm.control,
+    // HACK: It allows any property name to be used for instead of `fields` property name
+    name: formProp as unknown as "fields",
+  });
+
+  const [fieldDialog, setFieldDialog] = useState({
+    isOpen: false,
+    fieldIndex: -1,
+    data: {} as RhfFormField | null,
+  });
+
+  const addField = () => {
+    setFieldDialog({
+      isOpen: true,
+      fieldIndex: -1,
+      data: null,
+    });
+  };
+
+  const editField = (index: number, data: RhfFormField) => {
+    setFieldDialog({
+      isOpen: true,
+      fieldIndex: index,
+      data,
+    });
+  };
+
+  const removeField = (index: number) => {
+    remove(index);
+  };
+
+  return (
+    <div>
+      <div>
+        <div className="text-default text-sm font-semibold leading-none ltr:mr-1 rtl:ml-1">
+          {title}
+          {LockedIcon}
+        </div>
+        <p className="text-subtle mt-0.5 max-w-[280px] break-words text-sm sm:max-w-[500px]">{description}</p>
+        <FormFieldList
+          fields={fields}
+          swap={swap}
+          removeField={removeField}
+          update={update}
+          editField={editField}
+          disabled={disabled}
+          dataStore={dataStore}
+          shouldConsiderRequired={shouldConsiderRequired}
+        />
+        {!disabled && (
+          <Button
+            color="minimal"
+            data-testid="add-field"
+            onClick={addField}
+            className="mt-4"
+            StartIcon="plus">
+            {addFieldLabel}
+          </Button>
+        )}
+      </div>
+      <FormFieldDialog
+        fieldDialog={fieldDialog}
+        setFieldDialog={setFieldDialog}
+        fields={fields}
+        append={append}
+        update={update}
+        shouldConsiderRequired={shouldConsiderRequired}
+      />
     </div>
   );
 };
@@ -544,7 +561,6 @@ function FieldEditDialog({
   const variantsConfig = fieldForm.watch("variantsConfig");
 
   const fieldTypes = Object.values(fieldTypesConfigMap);
-  const fieldName = fieldForm.getValues("name");
 
   return (
     <Dialog open={dialog.isOpen} onOpenChange={onOpenChange} modal={false}>
