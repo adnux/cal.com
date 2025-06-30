@@ -2,6 +2,7 @@ import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { useEffect, useState } from "react";
 import type { SubmitHandler, UseFormReturn } from "react-hook-form";
 import { Controller, useFieldArray, useForm, useFormContext } from "react-hook-form";
+import { v4 as uuidv4 } from "uuid";
 import type { z } from "zod";
 import { ZodError } from "zod";
 
@@ -40,11 +41,68 @@ type RhfForm = {
 
 type RhfFormFields = RhfForm["fields"];
 
-type RhfFormField = RhfFormFields[number];
+type RhfFormField = RhfFormFields[number] & { id?: string };
 
 function getCurrentFieldType(fieldForm: UseFormReturn<RhfFormField>) {
   return fieldTypesConfigMap[fieldForm.watch("type") || "text"];
 }
+
+const formFieldDialogSubmitHandler = (
+  fieldDialog: { isOpen: boolean; fieldIndex: number; data: RhfFormField | null },
+  fields: RhfFormFields,
+  t: (key: string) => string,
+  update: (index: number, data: RhfFormField) => void,
+  isRoutingForm: boolean,
+  append: (field: RhfFormField) => void,
+  setFieldDialog: (dialog: { isOpen: boolean; fieldIndex: number; data: RhfFormField | null }) => void,
+  data: Parameters<SubmitHandler<RhfFormField>>[0]
+) => {
+  console.warn("FormFieldDialog handleSubmit", { data });
+  console.warn("FormFieldDialog", { fieldDialog });
+  const type = data.type || "text";
+  const isNewField = !fieldDialog.data;
+  if (isNewField && fields.some((f) => f.name === data.name)) {
+    showToast(t("form_builder_field_already_exists"), "error");
+    return;
+  }
+  if (fieldDialog.data) {
+    update(fieldDialog.fieldIndex, data);
+  } else {
+    let field: RhfFormField = {
+      ...data,
+      type,
+    };
+    if (!isRoutingForm) {
+      field = {
+        ...field,
+        sources: [
+          {
+            label: "User",
+            type: "user",
+            id: "user",
+            fieldRequired: data.required,
+          },
+        ],
+        editable: data?.editable || "user",
+      };
+    } else {
+      field = {
+        ...field,
+        id: uuidv4(),
+        disableOnPrefill: undefined,
+        placeholder: undefined,
+      };
+    }
+    debugger;
+    console.warn("FormFieldDialog append", { field });
+    append(field);
+  }
+  setFieldDialog({
+    isOpen: false,
+    fieldIndex: -1,
+    data: null,
+  });
+};
 
 type FormFieldDialogProps = {
   fieldDialog: {
@@ -58,6 +116,7 @@ type FormFieldDialogProps = {
   append: (field: RhfFormField) => void;
   update: (index: number, data: RhfFormField) => void;
   shouldConsiderRequired?: (field: RhfFormField) => boolean | undefined; // This is optional and can be used to override the default required behavior
+  isRoutingForm?: boolean; // This is used to determine if the form is a routing form or not
 };
 
 export const FormFieldDialog = ({
@@ -67,6 +126,7 @@ export const FormFieldDialog = ({
   append,
   update,
   shouldConsiderRequired = undefined, // This is optional and can be used to override the default required behavior
+  isRoutingForm = false, // This is used to determine if the form is a routing form or not
 }: FormFieldDialogProps) => {
   const { t } = useLocale();
   return (
@@ -81,38 +141,20 @@ export const FormFieldDialog = ({
               data: null,
             })
           }
-          handleSubmit={(data: Parameters<SubmitHandler<RhfFormField>>[0]) => {
-            const type = data.type || "text";
-            const isNewField = !fieldDialog.data;
-            if (isNewField && fields.some((f) => f.name === data.name)) {
-              showToast(t("form_builder_field_already_exists"), "error");
-              return;
-            }
-            if (fieldDialog.data) {
-              update(fieldDialog.fieldIndex, data);
-            } else {
-              const field: RhfFormField = {
-                ...data,
-                type,
-                sources: [
-                  {
-                    label: "User",
-                    type: "user",
-                    id: "user",
-                    fieldRequired: data.required,
-                  },
-                ],
-              };
-              field.editable = field.editable || "user";
-              append(field);
-            }
-            setFieldDialog({
-              isOpen: false,
-              fieldIndex: -1,
-              data: null,
-            });
-          }}
+          handleSubmit={(data: Parameters<SubmitHandler<RhfFormField>>[0]) =>
+            formFieldDialogSubmitHandler(
+              fieldDialog,
+              fields,
+              t,
+              update,
+              isRoutingForm,
+              append,
+              setFieldDialog,
+              data
+            )
+          }
           shouldConsiderRequired={shouldConsiderRequired}
+          isRoutingForm={isRoutingForm}
         />
       )}
     </>
@@ -528,11 +570,13 @@ function FieldEditDialog({
   onOpenChange,
   handleSubmit,
   shouldConsiderRequired,
+  isRoutingForm = false,
 }: {
   dialog: { isOpen: boolean; fieldIndex: number; data: RhfFormField | null };
   onOpenChange: (isOpen: boolean) => void;
   handleSubmit: SubmitHandler<RhfFormField>;
   shouldConsiderRequired?: (field: RhfFormField) => boolean | undefined;
+  isRoutingForm?: boolean;
 }) {
   const { t } = useLocale();
   const fieldForm = useForm<RhfFormField>({
@@ -627,7 +671,7 @@ function FieldEditDialog({
                       )}
                     </div>
 
-                    {fieldType?.isTextType ? (
+                    {!isRoutingForm && fieldType?.isTextType ? (
                       <InputField
                         {...fieldForm.register("placeholder")}
                         containerClassName="mt-6"
