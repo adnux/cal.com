@@ -26,6 +26,9 @@ interface FormMutationHandlerOptions {
 }
 
 export const formMutationHandler = async ({ ctx, input }: FormMutationHandlerOptions) => {
+  console.warn(`Form Mutation Handler: ${JSON.stringify(input, null, 2)}`);
+  console.warn(`User: ${ctx.user.id} with teamId ${input.teamId} and shouldConnect ${input.shouldConnect}`);
+
   const { user, prisma } = ctx;
   const { name, id, description, disabled, addFallback, duplicateFrom, shouldConnect } = input;
   let teamId = input.teamId;
@@ -114,6 +117,8 @@ export const formMutationHandler = async ({ ctx, input }: FormMutationHandlerOpt
     delete settings.sendUpdatesTo;
   }
 
+  console.warn(`inputFields: ${JSON.stringify(inputFields, null, 2)}`);
+  console.warn(`inputRoutes: ${JSON.stringify(inputRoutes, null, 2)}`);
   return await prisma.app_RoutingForms_Form.upsert({
     where: {
       id: id,

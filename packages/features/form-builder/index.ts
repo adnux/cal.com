@@ -3,3 +3,5 @@
 // Move it later there maybe? @sean
 export { FormBuilder } from "./FormBuilder";
 export { FormBuilderField } from "./FormBuilderField";
+export { FormFieldList } from "./FormBuilder";
+export { FormFieldDialog } from "./FormBuilder";

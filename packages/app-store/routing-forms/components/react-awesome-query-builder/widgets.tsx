@@ -166,7 +166,7 @@ const MultiSelectWidget = ({
     };
   });
 
-  const optionsFromList = selectItems.filter((item) => value?.includes(item.value));
+  const optionsFromList = selectItems?.filter((item) => value?.includes(item.value));
 
   // If no value could be found in the list, then we set the value to undefined.
   // This is to update the value back to the source that we couldn't set it. This is important otherwise the outside party thinks that the value is set but it is not.

@@ -1,6 +1,7 @@
 import type { App_RoutingForms_Form } from "@prisma/client";
-import type { z } from "zod";
+import { z } from "zod";
 
+import { fieldSchema } from "@calcom/features/form-builder/schema";
 import { entityPrismaWhereClause } from "@calcom/lib/entityPermissionUtils.server";
 import logger from "@calcom/lib/logger";
 import { safeStringify } from "@calcom/lib/safeStringify";
@@ -8,7 +9,7 @@ import { RoutingFormSettings } from "@calcom/prisma/zod-utils";
 
 import type { SerializableForm, SerializableFormTeamMembers } from "../types/types";
 import type { zodRoutesView, zodFieldsView } from "../zod";
-import { zodFields, zodRoutes } from "../zod";
+import { zodRoutes } from "../zod";
 import getConnectedForms from "./getConnectedForms";
 import isRouter from "./isRouter";
 import isRouterLinkedField from "./isRouterLinkedField";
@@ -32,7 +33,7 @@ export async function getSerializableForm<TForm extends App_RoutingForms_Form>({
     throw new Error("Error parsing routes");
   }
 
-  const fieldsParsed = zodFields.safeParse(form.fields);
+  const fieldsParsed = z.array(fieldSchema).safeParse(form.fields);
 
   if (!fieldsParsed.success) {
     throw new Error(`Error parsing fields: ${fieldsParsed.error}`);
